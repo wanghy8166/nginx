@@ -1,0 +1,70 @@
+一、nginx的安装
+cat /etc/redhat-release 
+CentOS Linux release 7.3.1611 (Core) 
+yum install pcre* 
+yum install zlib-devel
+mkdir -p /soft
+cd /soft
+wget http://nginx.org/download/nginx-1.10.3.tar.gz 
+tar zxvf nginx-1.10.3.tar.gz
+cd nginx-1.10.3
+# 默认配置介绍 http://nginx.org/en/docs/configure.html
+./configure 
+make
+make install
+/usr/local/nginx/sbin/nginx -V
+echo '/usr/local/nginx/sbin/nginx' >> /etc/rc.local
+cat /etc/rc.local
+
+二、nginx新增模块、版本升级
+# 用zabbix监控nginx，依赖 ngx_http_stub_status_module 模块 
+./configure --with-http_stub_status_module
+make
+cp /usr/local/nginx/sbin/nginx   /usr/local/nginx/sbin/nginx-`date +%Y%m%d-%H%M%S`
+cp /soft/nginx-1.10.3/objs/nginx /usr/local/nginx/sbin/nginx
+# 如果只是加载新的模块，这样就完成了
+# 如果是进行版本升级，则需要继续执行平滑升级
+make upgrade
+
+三、nginx配置文件、启动
+# 将nginx正式环境172.17.1.132里的2个配置文件拷贝过来
+/usr/local/nginx/conf/loadbalancing.conf
+/usr/local/nginx/conf/nginx.conf
+# 同时，需要在loadbalancing.conf文件server项，增加配置，才能使 ngx_http_stub_status_module 模块的功能可用
+    location /stub_status {
+        stub_status on;
+        access_log off;
+        #allow 127.0.0.1;
+        #deny all;
+    }
+
+# 检查配置文件
+/usr/local/nginx/sbin/nginx -t 
+# 启动 Nginx
+/usr/local/nginx/sbin/nginx
+# 重启 Nginx
+/usr/local/nginx/sbin/nginx -s reload
+# 查看状态页面
+http://172.17.230.52:8280/stub_status/
+
+四、修改zabbix-agent配置
+mkdir -p /etc/zabbix/zabbix_agentd.conf.d/
+cp userparameter_nginx.conf /etc/zabbix/zabbix_agentd.conf.d/
+ls -al /etc/zabbix/zabbix_agentd.conf.d/
+echo 'Include=/etc/zabbix/zabbix_agentd.conf.d/' >> /usr/local/etc/zabbix_agentd.conf 
+echo 'UnsafeUserParameters=1' >> /usr/local/etc/zabbix_agentd.conf 
+cat /usr/local/etc/zabbix_agentd.conf
+# 重启agent
+pkill zabbix_agentd 
+killall zabbix_agentd
+ps -ef|grep -i zabbix_agentd
+/usr/local/zabbix_agents/sbin/zabbix_agentd
+
+五、用zabbix-agent监控nginx的shell脚本、测试
+cp nginx.sh /usr/local/zabbix_agents/bin/
+/usr/local/zabbix_agents/bin/nginx.sh requests
+
+六、zabbix_get获取数据测试
+/usr/local/zabbix_agents/bin/zabbix_get -s 172.17.230.52 -k nginx.status[requests]
+
+参考: https://github.com/oscm/zabbix/tree/master/nginx 
